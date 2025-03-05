@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, user-scalable=no" />
+    <title>Doodle Jump Game with Physics</title>
+
+    <!-- zimjs.com - JavaScript Canvas Framework -->
+    <script type="module">
+        import zim from "https://zimjs.org/cdn/017/zim_physics";
+
+        // Initialize the game
+        new Frame(FIT, 1024, 768, light, dark, ready);
+
+        function ready() {
+            // Initialize the physics world
+            const physics = new Physics({ gravity: 9.8 }).drag();
+            
+            // Background
+            new Pic("assets/background.jpg")
+                .pos(0, -800)
+                .sca(1.6, 1.6);
+
+            // Create the player (a jumping box)
+            const player = new Rectangle(60, 60, "red")
+                .center()
+                .mov(rand(-50, 50))
+                .addPhysics({ bounciness: 0.5 })
+                .follow(0.5); // Follow physics updates
+            
+            player.body.SetBullet(true); // Prevents the player from passing through objects at high speeds
+
+            // Log the player's physics body to ensure it's initialized
+            console.log("Player Physics Body:", player.body);
+
+            // Platform creation function
+            function createPlatform(yPosition) {
+                const platform = new Rectangle(200, 20, "blue")
+                    .pos(Math.random() * (W - 200), yPosition)
+                    .addPhysics(false); // Static platform
+                S.addChild(platform);  // Add platform to stage
+                return platform;
+            }
+
+            // Create initial platforms
+            const platforms = [];
+            for (let i = 0; i < 5; i++) {
+                platforms.push(createPlatform(H - 50 - i * 150));
+            }
+
+            // Score
+            let score = 0;
+            const scoreText = new Label(`Score: ${score}`, 30, "white").pos(20, 20);
+            
+            // Control variables for movement
+            let moveLeft = false;
+            let moveRight = false;
+
+            // Listen to keyboard events for player control
+            F.on("keydown", e => {
+                if (e.key === "ArrowLeft") moveLeft = true;
+                if (e.key === "ArrowRight") moveRight = true;
+            });
+
+            F.on("keyup", e => {
+                if (e.key === "ArrowLeft") moveLeft = false;
+                if (e.key === "ArrowRight") moveRight = false;
+            });
+
+            // Player movement speed
+            const playerSpeed = 5; // Adjusted to make it smoother
+
+            // Move the player left/right using velocity
+            function movePlayer() {
+    const playerBody = player.body;
+    if (!playerBody) return;
+
+    const velocity = playerBody.GetLinearVelocity();
+    
+    // Log the current velocity for debugging
+    console.log("Player velocity: ", velocity);
+
+    if (moveLeft) {
+        playerBody.ApplyForce(new b2Vec2(-playerSpeed, 0), playerBody.GetWorldCenter());
+        console.log("Applying left force");
+    }
+    if (moveRight) {
+        playerBody.ApplyForce(new b2Vec2(playerSpeed, 0), playerBody.GetWorldCenter());
+        console.log("Applying right force");
+    }
+}
+
+
+            // Jump (bounce) mechanics when the player collides with a platform
+            let jumpVelocity = -20;
+            function checkCollisions() {
+                platforms.forEach(platform => {
+                    if (player.hitTest(platform)) {
+                        if (player.y + player.h / 2 <= platform.y - platform.h / 2) {
+                            player.y = platform.y - platform.h / 2 - player.h / 2; // Prevent player from going through platform
+                            player.body.SetLinearVelocity(new b2Vec2(player.body.GetLinearVelocity().x, jumpVelocity)); // Apply bounce
+                            jumpVelocity = -20; // Reset jump force after bounce
+                        }
+                    }
+                });
+            }
+
+            // Update platforms: if they go off-screen, recreate them higher up
+            function updatePlatforms() {
+                platforms.forEach((platform, index) => {
+                    if (platform.y > H) {
+                        platform.remove();
+                        platforms.splice(index, 1);
+                        createPlatform(-20); // Add new platform above
+                    }
+                });
+            }
+
+            // Update loop
+            F.on("frame", () => {
+    physics.update(); // Manually update the physics engine
+
+    movePlayer();
+    updatePlatforms();
+    checkCollisions();
+
+    score += 1;
+    scoreText.text = `Score: ${score}`;
+
+    if (player.y < H / 2) {
+        player.y = H / 2;
+        platforms.forEach(platform => platform.y += 5);
+    }
+});
+
+
+            // Reset game if the player falls off-screen
+            function resetGame() {
+                player.loc(W / 2, H - 100); // Reset player position
+                if (player.body) {
+                    player.body.SetLinearVelocity(new b2Vec2(0, 0)); // Stop player movement
+                }
+                platforms.forEach(platform => platform.remove()); // Remove platforms
+                platforms.length = 0;
+                createPlatform(H - 50); // Create new platform
+                score = 0;
+                scoreText.text = `Score: ${score}`;
+            }
+        }
+    </script>
+</head>
+<body></body>
+</html>

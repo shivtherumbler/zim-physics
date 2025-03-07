@@ -20,10 +20,53 @@
             });
             
             // Background
-            const background = new Rectangle(S.width, S.height, "#87CEEB").center();
+            //const background = new Rectangle(S.width, S.height, "#87CEEB").center();
             
-            // scale it so that it 'moves up' w the game
-            new Pic("assets/soccer-background.png").sca(2, 2).center();
+            // ZIM Shader background - using a solid color first
+            // A circle - using rgb() and circle() functions
+            const fragment = `
+            // center will be wiggled outside in ZIM so need a uniform
+            uniform vec2 center;
+
+            // prepare a function to convert RGB 0-255 to 0-1
+            vec3 rgb(float r, float g, float b) {
+                return vec3(r/255.0, g/255.0, b/255.0); // 0-1
+            }
+
+            // prepare a function to see if each point (uv) is inside or outside radius
+            // from wherever the center of the circle is located (pos - based on center uniform)
+            vec4 circle(vec2 uv, vec2 pos, float rad, vec3 color) {
+                float d = length(pos - uv) - rad;
+                float t = clamp(d, 0.0, 1.0); // threshhold 0 if within radius range from center
+                return vec4(color, 1.0 - t); // alpha 0 if outside radius
+            }
+
+            void mainImage( out vec4 fragColor, in vec2 fragCoord ) {
+                // circle will be 1/2 the height
+                float radius = 0.25 * iResolution.y;
+
+                // Background
+                vec4 layer1 = vec4(rgb(255.0, 165.0, 0.0), 1.0);
+
+                // Circle
+                vec3 red = rgb(255.0, 0.0, 0.0);
+                vec4 layer2 = circle(fragCoord.xy, center, radius, red);
+
+                // Blend the two using the alpha of the circle
+                fragColor = mix(layer1, layer2, layer2.a);
+            }
+            `;
+
+
+            const uniforms = {
+            center:[W/2, H/2]
+            };
+            const u = new Uniforms(uniforms).wiggle("center_A", W/2, 50,100, 2,4);
+            new Shader(W, H, fragment, u).center();
+
+            
+            // Background image (added after shader)
+            //new Pic("assets/soccer-background.png").sca(2, 2).center().addTo(S);
 
             // game variables
             let score = 0;
@@ -35,7 +78,7 @@
 
             
             // Create the player (a jumping box)
-            const player = new Rectangle(60, 60, "red")
+            const player = new Rectangle(60, 60, interstellar)
                 .centerReg()
                 .pos(S.width/2, S.height - 150);
             
@@ -280,15 +323,15 @@
             const gameOverLabel = new Label({
                 text: "GAME OVER!",
                 size: 40,
-                color: "red"
+                color: black
             }).addTo(gameOverContainer).pos(0, -60, CENTER); // Positioned above the score and restart button
 
             // High Score label (display the updated high score)
             const highScoreLabel = new Label({
                 text: "High Score: " + highScore,
                 size: 30,
-                color: "white"
-            }).addTo(gameOverContainer).pos(0, 0, CENTER); // Positioned below the "Game Over" label
+                color: white
+            }).addTo(gameOverContainer).pos(0, -10, CENTER); // Positioned below the "Game Over" label
 
             // Restart button
             const restartButton = new Button({
@@ -298,7 +341,7 @@
                 backgroundColor: "orange",
                 rollBackgroundColor: "orangered",
                 corner: 8
-            }).addTo(gameOverContainer).pos(0, 40, CENTER);
+            }).addTo(gameOverContainer).pos(0, 30, CENTER);
 
             // Attach the click event for restarting the game
             restartButton.on("click", () => {

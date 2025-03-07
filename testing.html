@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, user-scalable=no" />
-    <title>Doodle Jump Game with Physics</title>
+    <title>ZIM JUMP</title>
 
     <!-- zimjs.com - JavaScript Canvas Framework -->
     <script type="module">
@@ -56,7 +56,6 @@
                 fragColor = mix(layer1, layer2, layer2.a);
             }
             `;
-
 
             const uniforms = {
             center:[W/2, H/2]
@@ -306,8 +305,6 @@
                 scoreText.text = "Score: 0";
             }
 
-
-
             // Show game over tab
             function gameOverTab(highScore) {
 
@@ -351,8 +348,6 @@
             });
             }
 
-
-
             // Instructions - split into two lines
             const instructions = new Container(S.width, 60).pos(S.width/2, 30, CENTER);
             
@@ -367,6 +362,33 @@
                 size: 20,
                 color: "white"
             }).addTo(instructions).pos(-110, 28, CENTER);
+
+            // Create Start Menu
+            const startMenu = new Container(W,0).center();
+
+            // Title
+            const title = new Label({
+                text: "ZIM JUMP",
+                size: 50,
+                color: "white",
+                bold: true
+            }).addTo(startMenu).pos(0, -100, CENTER);
+
+            // Start Button
+            const startButton = new Button({
+                label: "Start Game",
+                width: 200,
+                height: 50,
+                backgroundColor: "green",
+                rollColor: "lime",
+                corner: 10
+            }).addTo(startMenu).pos(0, 0, CENTER);
+
+            startButton.tap(() => {
+                startMenu.removeFrom(); // Remove menu
+                gameStarted = true;     // Start game
+            });
+
         }
     </script>
 </head>

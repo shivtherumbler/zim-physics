@@ -23,14 +23,16 @@
             const background = new Rectangle(S.width, S.height, "#87CEEB").center();
             
             // scale it so that it 'moves up' w the game
-            new Pic("assets/background.jpg").sca(1.6, 1.6).center();
-            
+            new Pic("assets/soccer-background.png").sca(2, 2).center();
 
             // game variables
             let score = 0;
             let jumpCount = 0;
             let gameStarted = false;
+            let highScore = 0; // Track high score
             const maxJumps = 2; // maximum jumps allowed (regular + double jump)
+            let gameOverFlag = false; // Add this at the top, outside the Ticker loop
+
             
             // Create the player (a jumping box)
             const player = new Rectangle(60, 60, "red")
@@ -67,7 +69,7 @@
             // Create a starting platform (green and full width)
             const startPlatform = new Rectangle(S.width, 20, "green")
                 .centerReg()
-                .pos(0, S.height - 50,);
+                .pos(0, S.height - 50);
                 
             // Add static physics to platform
             startPlatform.addPhysics({
@@ -209,78 +211,119 @@
                     }
                 }
                 
-                // Game over check - only if player is below the screen and game has started
-                if (gameStarted && player.y > S.height + 200) {
-                    resetGame();
-                }
+
+            // Game over check - only if player is below the screen and game has started
+            if (gameStarted && player.y > S.height + 200 && !gameOverFlag) {
+                gameOverFlag = true; // Set flag to true to prevent repeated calls
+                gameOverTab(highScore); // Call game over tab once
+            }
+
             });
 
             // Reset game function
             function resetGame() {
-                // Reset player position to bottom
-                player.body.loc(S.width/2, S.height - 150);
+                // Reset the game over flag when restarting the game
+                gameOverFlag = false;
+
+                // Reset all game elements (platforms, player position, score, etc.)
+                if (score > highScore) {
+                    highScore = score;
+                }
+
+                // Reset player position and other game state
+                player.body.loc(S.width / 2, S.height - 150);
                 player.body.SetLinearVelocity({ x: 0, y: 0 });
-                
-                // Reset game state
                 gameStarted = false;
-                
-                // Reset jump count
                 jumpCount = 0;
                 jumpText.text = "Jumps: " + jumpCount + "/" + maxJumps;
-                
+
                 // Remove all platforms
                 platforms.forEach(platform => {
                     platform.removePhysics();
                     platform.removeFrom();
                 });
                 platforms.length = 0;
-                
-                // Create a new starting platform
+
+                // Create new starting platform and reset score
                 const newStartPlatform = new Rectangle(S.width, 20, "green")
                     .centerReg()
                     .pos(0, S.height - 50);
-                    
                 newStartPlatform.addPhysics({
                     dynamic: false, // Static platform
                     friction: 0.3
                 });
-                
                 platforms.push(newStartPlatform);
-                
+
                 // Create new platforms
                 for (let i = 0; i < 7; i++) {
                     platforms.push(createPlatform(S.height - 250 - i * platformSpacing));
                 }
-                
-                // Reset score
+
                 score = 0;
                 scoreText.text = "Score: 0";
             }
-            
-            // Instructions - split into two lines
-            const instructions = new Container(S.width, 60).pos(S.width/2, 30, CENTER);
-            
-            new Label({
-                text: "← → to move | SPACE to jump",
-                size: 20,
+
+
+
+            // Show game over tab
+            function gameOverTab(highScore) {
+
+            // Update high score if the current score exceeds it
+            if (score > highScore) {
+                highScore = score;
+            }
+
+            // Create the container with enough height to hold all elements
+            const gameOverContainer = new Container(0, 0).pos(S.width / 2, S.height / 2); 
+
+            // "Game Over!" label
+            const gameOverLabel = new Label({
+                text: "GAME OVER!",
+                size: 40,
+                color: "red"
+            }).addTo(gameOverContainer).pos(0, -60, CENTER); // Positioned above the score and restart button
+
+            // High Score label (display the updated high score)
+            const highScoreLabel = new Label({
+                text: "High Score: " + highScore,
+                size: 30,
                 color: "white"
-            }).addTo(instructions).pos(0, 0, CENTER);
-            
-            new Label({
-                text: "(double jump available)",
-                size: 20,
-                color: "white"
-            }).addTo(instructions).pos(0, 28, CENTER);
-            
-            // Add a ZIM Button for restart
-            new Button({
+            }).addTo(gameOverContainer).pos(0, 0, CENTER); // Positioned below the "Game Over" label
+
+            // Restart button
+            const restartButton = new Button({
                 label: "Restart",
-                width: 100,
+                width: 150,
                 height: 40,
                 backgroundColor: "orange",
                 rollBackgroundColor: "orangered",
                 corner: 8
-            }).pos(S.width - 80, 80, CENTER).on("click", resetGame);
+            }).addTo(gameOverContainer).pos(0, 40, CENTER);
+
+            // Attach the click event for restarting the game
+            restartButton.on("click", () => {
+                resetGame(); // Reset the game state
+                gameOverContainer.removeFrom(S); // Remove the game over container
+                // Optionally, you could re-add the background or reset other visual elements if necessary.
+            });
+            }
+
+
+
+            // Instructions - split into two lines
+            const instructions = new Container(S.width, 60).pos(S.width/2, 30, CENTER);
+            
+            new Label({
+                text: "← → to Move | SPACE to Jump",
+                size: 20,
+                color: "white"
+            }).addTo(instructions).pos(-145, 0, CENTER);
+            
+            new Label({
+                text: "(Double Jump Available)",
+                size: 20,
+                color: "white"
+            }).addTo(instructions).pos(-110, 28, CENTER);
         }
     </script>
 </head>

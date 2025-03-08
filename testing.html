@@ -359,8 +359,8 @@
             }
 
             function resetGame() {
-                gameOverFlag = false;
-
+                gameOverFlag = true;
+                
                 if (score > highScore) {
                     highScore = score;
                 }
@@ -388,7 +388,7 @@
                 newStartPlatform.shadow = new createjs.Shadow("#7CFC00", 0, 0, 10);
                 
                 newStartPlatform.addPhysics({
-                    dynamic: false, // static platform
+                    dynamic: false,
                     friction: 0.3
                 });
                 platforms.push(newStartPlatform);
@@ -400,6 +400,10 @@
 
                 score = 0;
                 scoreText.text = "Score: 0";
+                
+                setTimeout(() => {
+                    gameOverFlag = false;
+                }, 500);
             }
 
             function gameOverTab(highScore) {
@@ -468,8 +472,8 @@
                 }).addTo(gameOverContainer).pos(0, 130, CENTER);
 
                 restartButton.on("click", () => {
-                    resetGame(); 
-                    gameOverContainer.removeFrom(); 
+                    resetGame();
+                    gameOverContainer.removeFrom();
                 });
             }
         }

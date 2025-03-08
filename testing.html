@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, user-scalable=no" />
     <title>ZIM JUMP</title>
 
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Gantari:ital,wght@0,100..900;1,100..900&family=Geist+Mono:wght@100..900&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=Rubik+Bubbles&family=Urbanist:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+
     <!-- zimjs.com - JavaScript Canvas Framework -->
     <script type="module">
         import zim from "https://zimjs.org/cdn/017/zim_physics";
@@ -16,287 +21,379 @@
             // Initialize the physics world with proper gravity
             const physics = new Physics({
                 gravity: 9.8,
-                borders: "none" // We'll handle our own borders
+                borders: "none" 
             });
             
-            // Background
-            //const background = new Rectangle(S.width, S.height, "#87CEEB").center();
-            
-            // ZIM Shader background - using a solid color first
-            // A circle - using rgb() and circle() functions
+            // sky shader background with smooth gradient
             const fragment = `
-            // center will be wiggled outside in ZIM so need a uniform
-            uniform vec2 center;
-
-            // prepare a function to convert RGB 0-255 to 0-1
+            // Uniforms for the shader
+            uniform vec2 sunPosition;     // Position of the sun
+            
+            // convert RGB 0-255 to 0-1
             vec3 rgb(float r, float g, float b) {
-                return vec3(r/255.0, g/255.0, b/255.0); // 0-1
+                return vec3(r/255.0, g/255.0, b/255.0);
             }
-
-            // prepare a function to see if each point (uv) is inside or outside radius
-            // from wherever the center of the circle is located (pos - based on center uniform)
-            vec4 circle(vec2 uv, vec2 pos, float rad, vec3 color) {
-                float d = length(pos - uv) - rad;
-                float t = clamp(d, 0.0, 1.0); // threshhold 0 if within radius range from center
-                return vec4(color, 1.0 - t); // alpha 0 if outside radius
+            
+            vec4 sun(vec2 uv, vec2 pos, vec3 color) {
+                float dist = length(pos - uv);
+                
+                float sunRadius = 0.12 * iResolution.y;
+                float core = smoothstep(sunRadius, 0.0, dist);
+                
+                float glowRadius = sunRadius * 6.0;
+                float glow = smoothstep(glowRadius, sunRadius * 0.6, dist) * 0.8;
+                
+                float brightness = core + glow;
+                
+                vec3 sunColor = mix(color, vec3(1.0), 0.3);
+                
+                return vec4(sunColor, brightness);
             }
-
-            void mainImage( out vec4 fragColor, in vec2 fragCoord ) {
-                // circle will be 1/2 the height
-                float radius = 0.25 * iResolution.y;
-
-                // Background
-                vec4 layer1 = vec4(rgb(255.0, 165.0, 0.0), 1.0);
-
-                // Circle
-                vec3 red = rgb(255.0, 0.0, 0.0);
-                vec4 layer2 = circle(fragCoord.xy, center, radius, red);
-
-                // Blend the two using the alpha of the circle
-                fragColor = mix(layer1, layer2, layer2.a);
+            
+            void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+                vec2 uv = fragCoord.xy / iResolution.xy;
+                
+                vec3 skyTop = rgb(135.0, 206.0, 250.0);      // Light sky blue
+                vec3 skyBottom = rgb(70.0, 140.0, 210.0);    // Steel blue
+                vec3 skyColor = mix(skyTop, skyBottom, uv.y);
+                
+                vec4 sky = vec4(skyColor, 1.0);
+                
+                vec3 sunColor = rgb(255.0, 215.0, 0.0);      // Gold color
+                vec4 sunLayer = sun(fragCoord.xy, sunPosition, sunColor);
+                
+                fragColor = mix(sky, sunLayer, sunLayer.a);
             }
             `;
 
             const uniforms = {
-            center:[W/2, H/2]
+                sunPosition: [W * 0.8, H * 0.2]  // sun position in top right
             };
-            const u = new Uniforms(uniforms).wiggle("center_A", W/2, 50,100, 2,4);
-            new Shader(W, H, fragment, u).center();
-
             
-            // Background image (added after shader)
-            //new Pic("assets/soccer-background.png").sca(2, 2).center().addTo(S);
-
+            // create uniform object for animation
+            const u = new Uniforms(uniforms);
+            
+            // sun animation
+            u.wiggle("sunPosition_A", W * 0.8, 20, 10, 3, 5); 
+            u.wiggle("sunPosition_B", H * 0.2, 15, 8, 4, 6);    
+            
+            new Shader(W, H, fragment, u).center();
+            
             // game variables
             let score = 0;
             let jumpCount = 0;
             let gameStarted = false;
             let highScore = 0; // Track high score
             const maxJumps = 2; // maximum jumps allowed (regular + double jump)
-            let gameOverFlag = false; // Add this at the top, outside the Ticker loop
-
+            let gameOverFlag = false;
             
-            // Create the player (a jumping box)
-            const player = new Rectangle(60, 60, interstellar)
-                .centerReg()
-                .pos(S.width/2, S.height - 150);
+            let player;
             
-            player.addPhysics({
-                density: 1,
-                friction: 0.5,
-                bounciness: 0.2,
-                linear: 0.8,
-                angular: 0.8
-            });
+            const cloudTextStyle = {
+                color: "white",
+                strokeColor: "black",
+                strokeWidth: 6
+            };
             
-            // Platform creation function
+            const uiTextStyle = {
+                color: "#FFD700",  
+                outlineColor: "#8B4513",  
+                outlineWidth: 3
+            };
+            
+            const instructionTextStyle = {
+                color: "white",
+                shadowColor: "#0066CC",
+                shadowBlur: 10
+            };
+            
+            const scoreText = new Label({
+                text: "Score: 0",
+                size: 30,
+                color: uiTextStyle.color,
+                outlineColor: uiTextStyle.outlineColor,
+                outlineWidth: uiTextStyle.outlineWidth,
+                font: "Poppins",
+                bold: true
+            }).pos(20, 20).alp(0); 
+            
+            const jumpText = new Label({
+                text: "Jumps: " + jumpCount + "/" + maxJumps,
+                size: 20,
+                color: uiTextStyle.color,
+                outlineColor: uiTextStyle.outlineColor,
+                outlineWidth: uiTextStyle.outlineWidth - 1,
+                font: "Poppins",
+                bold: true
+            }).pos(20, 60).alp(0);
+            
+            const instructions = new Container(S.width, 60).pos(S.width/2, 30, CENTER).alp(0);
+            
+            new Label({
+                text: "← → to Move | SPACE to Jump",
+                size: 20,
+                color: instructionTextStyle.color,
+                shadowColor: instructionTextStyle.shadowColor,
+                shadowBlur: instructionTextStyle.shadowBlur,
+                font: "Urbanist",
+                bold: true
+            }).addTo(instructions).pos(-145, 0, CENTER);
+            
+            new Label({
+                text: "(Double Jump Available)",
+                size: 20,
+                color: instructionTextStyle.color,
+                shadowColor: instructionTextStyle.shadowColor,
+                shadowBlur: instructionTextStyle.shadowBlur,
+                font: "Urbanist",
+                bold: true,
+                italic: true
+            }).addTo(instructions).pos(-110, 28, CENTER);
+            
+            // platform creation function
             function createPlatform(yPosition, width = 200, color = "blue") {
-                const platform = new Rectangle(width, 20, color)
+                const platformColor = "#4169E1";  // Royal blue
+                
+                const platform = new Rectangle(width, 20, platformColor)
                     .centerReg()
                     .pos(Math.random() * (S.width - width) + width/2, yPosition);
                 
-                // Add static physics to platform
+                platform.shadow = new createjs.Shadow("#87CEEB", 0, 0, 10);
+                
                 platform.addPhysics({
-                    dynamic: false, // Static platform
+                    dynamic: false, // static platform
                     friction: 0.3
                 });
                 
                 return platform;
             }
 
-            // Create initial platforms
+            // create platforms array 
             const platforms = [];
             const platformSpacing = 150;
             
-            // Create a starting platform (green and full width)
-            const startPlatform = new Rectangle(S.width, 20, "green")
-                .centerReg()
-                .pos(0, S.height - 50);
+            const startMenu = new Container(W, H).center();
+
+            const title = new Label({
+                text: "ZIM JUMP",
+                size: 70,
+                color: cloudTextStyle.color,
+                outlineColor: cloudTextStyle.strokeColor,
+                outlineWidth: cloudTextStyle.strokeWidth,
+                font: "Rubik Bubbles",
+                shadowColor: "white",
+                shadowBlur: 20
+            }).addTo(startMenu).pos(0, H/2-100, CENTER);
+
+            title.wiggle("y", H/2-100, 8, 4, 1, 2);
+
+            const startButton = new Button({
+                label: new Label({
+                    text: "Start Game",
+                    size: 24,
+                    color: "white",
+                    font: "Poppins",
+                    bold: true
+                }),
+                width: 200,
+                height: 60,
+                backgroundColor: "#4682B4",  
+                rollBackgroundColor: "#1E90FF", 
+                corner: 30,  
+                shadowColor: "#87CEEB",
+                shadowBlur: 15
+            });
+            startButton.addTo(startMenu).pos(0, H/2+100, CENTER);
+
+            startButton.tap(() => {
+                initializeGame();
+                startMenu.animate({alpha:0}, 0.5).removeFrom(); 
+                gameStarted = true;     
+            });
+            
+            function initializeGame() {
+                player = new Rectangle(60, 60, interstellar)
+                    .centerReg()
+                    .pos(S.width/2, S.height - 150);
                 
-            // Add static physics to platform
-            startPlatform.addPhysics({
-                dynamic: false, // Static platform
-                friction: 0.3
-            });
-            
-            platforms.push(startPlatform);
-            
-            // Create regular platforms
-            for (let i = 0; i < 7; i++) {
-                platforms.push(createPlatform(S.height - 250 - i * platformSpacing));
-            }
-
-            // Score display
-            const scoreText = new Label({
-                text: "Score: 0",
-                size: 30,
-                color: "white"
-            }).pos(20, 20);
-            
-            // Jump counter display
-            const jumpText = new Label({
-                text: "Jumps: " + jumpCount + "/" + maxJumps,
-                size: 20,
-                color: "white"
-            }).pos(20, 60);
-            
-            // Set up player control with keyboard for left/right movement
-            player.control({
-                type: "arrows",
-                speed: 15,
-                horizontal: true,
-                vertical: false
-            });
-            
-            // Space bar for jumping
-            window.addEventListener("keydown", (e) => {
-                if (e.code === "Space" && jumpCount < maxJumps) {
-                    // Apply upward impulse for jump
-                    player.body.SetLinearVelocity({
-                        x: player.body.GetLinearVelocity().x,
-                        y: -15
-                    });
+                player.shadow = new createjs.Shadow("#87CEEB", 0, 0, 15);
+                
+                player.addPhysics({
+                    density: 1,
+                    friction: 0.5,
+                    bounciness: 0.2,
+                    linear: 0.8,
+                    angular: 0.8
+                });
+                
+                const startPlatformColor = "#32CD32";  
+                
+                const startPlatform = new Rectangle(S.width, 20, startPlatformColor)
+                    .centerReg()
+                    .pos(0, S.height - 50);
+                
+                startPlatform.shadow = new createjs.Shadow("#7CFC00", 0, 0, 10);
                     
-                    jumpCount++;
-                    jumpText.text = "Jumps: " + jumpCount + "/" + maxJumps;
-                    
-                    // Game has started once player jumps
-                    gameStarted = true;
+                startPlatform.addPhysics({
+                    dynamic: false, // static platform
+                    friction: 0.3
+                });
+                
+                platforms.push(startPlatform);
+                
+                // create regular platforms
+                for (let i = 0; i < 7; i++) {
+                    platforms.push(createPlatform(S.height - 250 - i * platformSpacing));
                 }
-            });
-            
-            // Handle screen wrapping for player
-            Ticker.add(() => {
-                // Handle screen wrapping (player going off the sides)
-                if (player.x < -player.width/2) {
-                    player.body.loc(S.width + player.width/2, player.y);
-                }
-                if (player.x > S.width + player.width/2) {
-                    player.body.loc(-player.width/2, player.y);
-                }
-            });
-
-            // Set up collision detection for platforms
-            player.contact((other) => {
-                // Check if the other object is a platform
-                if (platforms.includes(other)) {
-                    // Only reset jump count if player is moving downward (landing)
-                    if (player.body.GetLinearVelocity().y > 0) {
-                        // Check if player is above the platform
-                        if (player.y < other.y - player.height/2) {
-                            // Reset jump count when landing on a platform
-                            jumpCount = 0;
-                            jumpText.text = "Jumps: " + jumpCount + "/" + maxJumps;
-                            
-                            // Apply a small upward bounce
-                            player.body.SetLinearVelocity({
-                                x: player.body.GetLinearVelocity().x,
-                                y: -10
-                            });
-                            
-                            // Add points for landing on platforms
-                            if (gameStarted && other !== startPlatform) {
-                                score += 10;
-                                scoreText.text = "Score: " + score;
+                
+                // set up player control with keyboard for left/right movement
+                player.control({
+                    type: "arrows",
+                    speed: 15,
+                    horizontal: true,
+                    vertical: false
+                });
+                
+                // space bar for jumping
+                window.addEventListener("keydown", (e) => {
+                    if (e.code === "Space" && jumpCount < maxJumps) {
+                        player.body.SetLinearVelocity({
+                            x: player.body.GetLinearVelocity().x,
+                            y: -15
+                        });
+                        
+                        jumpCount++;
+                        jumpText.text = "Jumps: " + jumpCount + "/" + maxJumps;
+                    }
+                });
+                
+                setupGameTickers();
+                
+                // collision detection for platforms
+                player.contact((other) => {
+                    // check if the other object is a platform
+                    if (platforms.includes(other)) {
+                        // reset jump count if player is moving downward (landing)
+                        if (player.body.GetLinearVelocity().y > 0) {
+                            // check if player is above the platform
+                            if (player.y < other.y - player.height/2) {
+                                // reset jump count when landing on a platform
+                                jumpCount = 0;
+                                jumpText.text = "Jumps: " + jumpCount + "/" + maxJumps;
+                                
+                                player.body.SetLinearVelocity({
+                                    x: player.body.GetLinearVelocity().x,
+                                    y: -10
+                                });
                             }
                         }
                     }
-                }
-            });
-            
-            // Update platforms: recycle them when they go off-screen
-            Ticker.add(() => {
-                const cameraScrollThreshold = S.height / 2 - 100;
+                });
                 
-                // Scroll platforms down if player gets too high
-                if (player.y < cameraScrollThreshold) {
-                    // Move player back to threshold
-                    const diff = cameraScrollThreshold - player.y;
-                    player.body.loc(player.x, cameraScrollThreshold);
+                // Add UI elements with animation
+                scoreText.animate({alpha:1}, 0.5);
+                jumpText.animate({alpha:1}, 0.5);
+                
+                // Add instructions to stage last so they're on top of everything
+                instructions.addTo().animate({alpha:1}, 0.5);
+            }
+            
+            function setupGameTickers() {
+                const wrapTicker = Ticker.add(() => {
+                    // handle screen wrapping (player going off the sides)
+                    if (player.x < -player.width/2) {
+                        player.body.loc(S.width + player.width/2, player.y);
+                    }
+                    if (player.x > S.width + player.width/2) {
+                        player.body.loc(-player.width/2, player.y);
+                    }
+                });
+                
+                // update platforms: recycle them when they go off-screen
+                const platformTicker = Ticker.add(() => {
+                    const cameraScrollThreshold = S.height / 2 - 100;
                     
-                    // Move all platforms down by the same amount
-                    platforms.forEach(platform => {
-                        platform.body.loc(platform.x, platform.y + diff);
-                    });
-                    
-                    // Update score based on how high player went
-                    if (gameStarted) {
+                    // scroll platforms down if player gets too high
+                    if (player.y < cameraScrollThreshold) {
+                        const diff = cameraScrollThreshold - player.y;
+                        player.body.loc(player.x, cameraScrollThreshold);
+                        
+                        platforms.forEach(platform => {
+                            platform.body.loc(platform.x, platform.y + diff);
+                        });
+                        
                         score += Math.round(diff);
                         scoreText.text = "Score: " + score;
                     }
-                }
-                
-                // Check if platforms are below screen
-                for (let i = platforms.length - 1; i >= 0; i--) {
-                    const platform = platforms[i];
                     
-                    // Don't remove starting platform until game has started
-                    if (platform === startPlatform && !gameStarted) continue;
-                    
-                    if (platform.y > S.height + platform.height) {
-                        // Find the highest platform
-                        let highestY = S.height;
-                        platforms.forEach(p => {
-                            if (p.y < highestY) highestY = p.y;
-                        });
+                    // check if platforms are below screen
+                    for (let i = platforms.length - 1; i >= 0; i--) {
+                        const platform = platforms[i];
                         
-                        // Remove old platform
-                        platform.removePhysics();
-                        platform.removeFrom();
-                        platforms.splice(i, 1);
-                        
-                        // Add new platform at the top
-                        const newPlatform = createPlatform(
-                            highestY - platformSpacing - Math.random() * 50
-                        );
-                        platforms.push(newPlatform);
+                        if (platform.y > S.height + platform.height) {
+                            // find the highest platform
+                            let highestY = S.height;
+                            platforms.forEach(p => {
+                                if (p.y < highestY) highestY = p.y;
+                            });
+                            
+                            // remove old platform
+                            platform.removePhysics();
+                            platform.removeFrom();
+                            platforms.splice(i, 1);
+                            
+                            // add new platform at the top
+                            const newPlatform = createPlatform(
+                                highestY - platformSpacing - Math.random() * 50
+                            );
+                            platforms.push(newPlatform);
+                        }
                     }
-                }
-                
-
-            // Game over check - only if player is below the screen and game has started
-            if (gameStarted && player.y > S.height + 200 && !gameOverFlag) {
-                gameOverFlag = true; // Set flag to true to prevent repeated calls
-                gameOverTab(highScore); // Call game over tab once
+                    
+                    // Game over check - only if player is below the screen
+                    if (player.y > S.height + 200 && !gameOverFlag) {
+                        gameOverFlag = true;
+                        gameOverTab(highScore); 
+                    }
+                });
             }
 
-            });
-
-            // Reset game function
             function resetGame() {
-                // Reset the game over flag when restarting the game
                 gameOverFlag = false;
 
-                // Reset all game elements (platforms, player position, score, etc.)
                 if (score > highScore) {
                     highScore = score;
                 }
 
-                // Reset player position and other game state
+                // reset player position and other game state
                 player.body.loc(S.width / 2, S.height - 150);
                 player.body.SetLinearVelocity({ x: 0, y: 0 });
-                gameStarted = false;
                 jumpCount = 0;
                 jumpText.text = "Jumps: " + jumpCount + "/" + maxJumps;
 
-                // Remove all platforms
+                // remove all platforms
                 platforms.forEach(platform => {
                     platform.removePhysics();
                     platform.removeFrom();
                 });
                 platforms.length = 0;
 
-                // Create new starting platform and reset score
-                const newStartPlatform = new Rectangle(S.width, 20, "green")
+                // create new starting platform and reset score
+                const startPlatformColor = "#32CD32"; 
+                
+                const newStartPlatform = new Rectangle(S.width, 20, startPlatformColor)
                     .centerReg()
                     .pos(0, S.height - 50);
+                
+                newStartPlatform.shadow = new createjs.Shadow("#7CFC00", 0, 0, 10);
+                
                 newStartPlatform.addPhysics({
-                    dynamic: false, // Static platform
+                    dynamic: false, // static platform
                     friction: 0.3
                 });
                 platforms.push(newStartPlatform);
 
-                // Create new platforms
+                // create new platforms
                 for (let i = 0; i < 7; i++) {
                     platforms.push(createPlatform(S.height - 250 - i * platformSpacing));
                 }
@@ -305,90 +402,76 @@
                 scoreText.text = "Score: 0";
             }
 
-            // Show game over tab
             function gameOverTab(highScore) {
+                // update high score if the current score exceeds it
+                if (score > highScore) {
+                    highScore = score;
+                }
 
-            // Update high score if the current score exceeds it
-            if (score > highScore) {
-                highScore = score;
+                const gameOverContainer = new Container(400, 300)
+                    .center(); // Center the container in the stage
+                
+                new Rectangle(400, 300, "rgba(70, 130, 180, 0.85)", 15, 15, 15).addTo(gameOverContainer);
+                
+                new Rectangle(400, 300, null, 10, "white", 15).addTo(gameOverContainer);
+                gameOverContainer.shadow = new createjs.Shadow("white", 0, 0, 15);
+
+                const gameOverLabel = new Label({
+                    text: "GAME OVER!",
+                    size: 45,
+                    color: "white",
+                    outlineColor: "black",
+                    outlineWidth: 8,
+                    font: "Rubik Bubbles"
+                }).addTo(gameOverContainer).pos(0, -80, CENTER);
+                
+                // Add floating animation to game over text
+                gameOverLabel.wiggle("y", -80, 10, 3, 1, 2);
+
+                // Current Score label
+                const scoreLabel = new Label({
+                    text: "Your Score: " + score,
+                    size: 25,
+                    color: "white",
+                    font: "Poppins",
+                    bold: true
+                }).addTo(gameOverContainer).pos(0, 230, CENTER);
+
+                const highScoreLabel = new Label({
+                    text: "High Score: " + highScore,
+                    size: 28,
+                    color: "#FFD700",  
+                    outlineColor: "#8B4513",  
+                    outlineWidth: 3,
+                    font: "Poppins",
+                    bold: true,
+                    shadowColor: "#FFD700",
+                    shadowBlur: 10
+                }).addTo(gameOverContainer).pos(0, 50, CENTER);
+
+                // restart button with cloud-like styling
+                const restartButton = new Button({
+                    label: new Label({
+                        text: "Play Again",
+                        size: 22,
+                        color: "white",
+                        font: "Poppins",
+                        bold: true
+                    }),
+                    width: 180,
+                    height: 50,
+                    backgroundColor: "#FFA500",  
+                    rollBackgroundColor: "#FF4500", 
+                    corner: 25,  
+                    shadowColor: "#FFD700",  
+                    shadowBlur: 15
+                }).addTo(gameOverContainer).pos(0, 130, CENTER);
+
+                restartButton.on("click", () => {
+                    resetGame(); 
+                    gameOverContainer.animate({alpha:0}, 0.5).removeFrom(); 
+                });
             }
-
-            // Create the container with enough height to hold all elements
-            const gameOverContainer = new Container(0, 0).pos(S.width / 2, S.height / 2); 
-
-            // "Game Over!" label
-            const gameOverLabel = new Label({
-                text: "GAME OVER!",
-                size: 40,
-                color: black
-            }).addTo(gameOverContainer).pos(0, -60, CENTER); // Positioned above the score and restart button
-
-            // High Score label (display the updated high score)
-            const highScoreLabel = new Label({
-                text: "High Score: " + highScore,
-                size: 30,
-                color: white
-            }).addTo(gameOverContainer).pos(0, -10, CENTER); // Positioned below the "Game Over" label
-
-            // Restart button
-            const restartButton = new Button({
-                label: "Restart",
-                width: 150,
-                height: 40,
-                backgroundColor: "orange",
-                rollBackgroundColor: "orangered",
-                corner: 8
-            }).addTo(gameOverContainer).pos(0, 30, CENTER);
-
-            // Attach the click event for restarting the game
-            restartButton.on("click", () => {
-                resetGame(); // Reset the game state
-                gameOverContainer.removeFrom(S); // Remove the game over container
-                // Optionally, you could re-add the background or reset other visual elements if necessary.
-            });
-            }
-
-            // Instructions - split into two lines
-            const instructions = new Container(S.width, 60).pos(S.width/2, 30, CENTER);
-            
-            new Label({
-                text: "← → to Move | SPACE to Jump",
-                size: 20,
-                color: "white"
-            }).addTo(instructions).pos(-145, 0, CENTER);
-            
-            new Label({
-                text: "(Double Jump Available)",
-                size: 20,
-                color: "white"
-            }).addTo(instructions).pos(-110, 28, CENTER);
-
-            // Create Start Menu
-            const startMenu = new Container(W,0).center();
-
-            // Title
-            const title = new Label({
-                text: "ZIM JUMP",
-                size: 50,
-                color: "white",
-                bold: true
-            }).addTo(startMenu).pos(0, -100, CENTER);
-
-            // Start Button
-            const startButton = new Button({
-                label: "Start Game",
-                width: 200,
-                height: 50,
-                backgroundColor: "green",
-                rollColor: "lime",
-                corner: 10
-            }).addTo(startMenu).pos(0, 0, CENTER);
-
-            startButton.tap(() => {
-                startMenu.removeFrom(); // Remove menu
-                gameStarted = true;     // Start game
-            });
-
         }
     </script>
 </head>
